@@ -9,6 +9,8 @@ function App() {
   const [touchStart, setTouchStart] = useState(null);
   const [touchEnd, setTouchEnd] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [lastPath, setLastPath] = useState(window.location.pathname); // Новый стейт для хранения предыдущего пути
+  const [nextPath, setNextPath] = useState(null); // Новый стейт для хранения пути, куда хотим перейти
   const containerRef = useRef(null);
 
   // Минимальное расстояние для свайпа
@@ -23,25 +25,12 @@ function App() {
     
     checkMobile();
 
-    // Функция для обработки события beforeunload (закрытие вкладки/переход на другую страницу)
-    // const handleBeforeUnload = (e) => {
-    //   e.preventDefault();
-    //   e.returnValue = 'Вы уверены, что хотите покинуть страницу?';
-    //   return 'Вы уверены, что хотите покинуть страницу?';
-    // };
-
     // Функция для обработки события popstate (кнопка назад/вперед)
-    const handlePopState = (e) => {
-      // Проверяем, есть ли история навигации
-      if (window.history.length > 1) {
-        e.preventDefault();
-        setShowConfirmDialog(true);
-        setPendingNavigation(() => () => {
-          // Разрешаем навигацию назад
-          window.history.back();
-        });
-      }
-    };
+    // const handlePopState = () => {
+    //   const newPath = window.location.pathname;
+    //   setNextPath(newPath); // Куда хотим перейти
+    //   setShowConfirmDialog(true);
+    // };
 
     // Функция для обработки изменения URL
     const handleUrlChange = () => {
@@ -101,8 +90,7 @@ function App() {
     };
 
     // Добавляем обработчики событий
-    // window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('popstate', handlePopState);
+    // window.addEventListener('popstate', handlePopState);
     window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('blur', handleWindowBlur);
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -131,8 +119,7 @@ function App() {
 
     // Очистка обработчиков при размонтировании компонента
     return () => {
-      // window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('popstate', handlePopState);
+      // window.removeEventListener('popstate', handlePopState);
       window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('blur', handleWindowBlur);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -152,17 +139,18 @@ function App() {
   // Функция для подтверждения навигации
   const confirmNavigation = () => {
     setShowConfirmDialog(false);
-    if (pendingNavigation) {
-      pendingNavigation();
-    }
+    setCurrentPath(nextPath || window.location.pathname);
+    setLastPath(nextPath || window.location.pathname);
+    setNextPath(null);
   };
 
   // Функция для отмены навигации
   const cancelNavigation = () => {
     setShowConfirmDialog(false);
-    setPendingNavigation(null);
-    // Возвращаемся на текущую страницу
-    window.history.pushState(null, '', window.location.href);
+    setNextPath(null);
+    // Возвращаемся на предыдущий путь
+    window.history.pushState(null, '', lastPath);
+    setCurrentPath(lastPath);
   };
 
   // Функция для тестирования навигации
@@ -172,16 +160,17 @@ function App() {
 
   // Функция для тестирования навигации назад
   const testBackNavigation = () => {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      alert('Нет истории для навигации назад');
-    }
+    // if (window.history.length > 1) {
+    //   window.history.back();
+    // } else {
+    //   alert('Нет истории для навигации назад');
+    // }
   };
 
   // Функция для проверки возможности навигации назад
   const canGoBack = () => {
-    return window.history.length > 1;
+    // return window.history.length > 1;
+    return false; // Закомментировано
   };
 
   // Функция для открытия текущей страницы в новой вкладке
@@ -189,9 +178,30 @@ function App() {
     window.open(window.location.href, '_blank');
   };
 
-  // Функция для открытия PDF файла
+  // Функция для открытия PDF файла по прямой ссылке
   const openPdf = () => {
-    window.open('https://www.orimi.com/pdf-test.pdf', '_blank');
+    window.open('/pdf-test.pdf', '_blank');
+  };
+
+  // Функция для открытия PDF файла через Blob с проверками
+  const openPdfBlob = async () => {
+    try {
+      const response = await fetch('/pdf-test.pdf');
+      const contentType = response.headers.get('content-type');
+      if (!response.ok) throw new Error('Ошибка загрузки PDF');
+      if (!contentType || !contentType.includes('pdf')) {
+        throw new Error('Файл не PDF или не найден! content-type: ' + contentType);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      console.log('Content-Type:', contentType);
+      console.log('Размер файла:', arrayBuffer.byteLength);
+      const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+    } catch (error) {
+      alert('Не удалось открыть PDF: ' + error.message);
+    }
   };
 
   return (
@@ -210,6 +220,7 @@ function App() {
             Перейти на тестовую страницу
           </button>
           
+          {/*
           <button 
             onClick={testBackNavigation}
             className="test-button secondary"
@@ -217,6 +228,7 @@ function App() {
           >
             Тест кнопки "Назад"
           </button>
+          */}
 
           <button 
             onClick={openInNewTab}
@@ -233,25 +245,17 @@ function App() {
           >
             Открыть PDF
           </button>
+
+          <button 
+            onClick={openPdfBlob}
+            className="test-button"
+            style={{ backgroundColor: '#ff9800' }}
+          >
+            Открыть PDF через Blob
+          </button>
         </div>
 
-        <div className="info">
-          <p><strong>Инструкции для тестирования:</strong></p>
-          <p>1. Нажмите "Перейти на тестовую страницу"</p>
-          <p>2. Попробуйте нажать кнопку "Назад" в браузере</p>
-          <p>3. Или используйте кнопку "Тест кнопки 'Назад'" выше</p>
-          <p>4. Нажмите "Открыть в новой вкладке" для тестирования переключения между вкладками</p>
-          <p>5. Нажмите "Открыть PDF" для тестирования перехода на внешний ресурс</p>
-          <p>6. Попробуйте закрыть вкладку</p>
-          {isMobile && (
-            <>
-              <p><strong>На мобильных устройствах:</strong></p>
-              <p>• Попробуйте свайп влево (жест "назад")</p>
-              <p>• Используйте кнопку "Назад" в браузере</p>
-              <p><em>⚠️ Крестик (закрытие вкладки) не может быть обработан JavaScript</em></p>
-            </>
-          )}
-        </div>
+        {/* Удалён блок инструкций по тестированию */}
 
         <div className="debug-info">
           <p><strong>Отладочная информация:</strong></p>
